@@ -1,4 +1,5 @@
-trigger: none
+trigger:
+- main
 
 pool:
   vmImage: 'ubuntu-latest'
@@ -6,17 +7,24 @@ pool:
 jobs:
 - job: DeployToAzureVM
   steps:
+  - checkout: self
+    submodules: true
+
+  - task: UseDotNet@2
+    inputs:
+      packageType: 'sdk'
+      version: '3.1.x'
+      installationPath: $(Agent.ToolsDirectory)/dotnet
+
   - script: |
-      sudo apt-get update
-      sudo apt-get install -y apache2
-    displayName: 'Install Apache'
+      dotnet publish -c Release -o $(Build.ArtifactStagingDirectory)/publish
+    displayName: 'Publish HTML project'
 
   - task: CopyFiles@2
     inputs:
-      SourceFolder: '$(Build.SourcesDirectory)'
+      SourceFolder: '$(Build.ArtifactStagingDirectory)/publish'
       Contents: '**'
       TargetFolder: '$(Build.ArtifactStagingDirectory)/publish'
-    displayName: 'Copy HTML files'
 
   - task: PublishBuildArtifacts@1
     inputs:
@@ -24,12 +32,35 @@ jobs:
       artifactName: 'publishedWebsite'
       publishLocation: 'Container'
 
+  - task: DownloadSecureFile@1
+    name: sshKey
+    displayName: 'Download SSH private key'
+    inputs:
+      secureFile: 'your-ssh-key'
+
   - task: SSH@0
     inputs:
-      sshEndpoint: 'azurevm'  # Replace with the name of your SSH service connection
-      runOptions: 'inline'
+      host: '20.0.8.103'
+      port: '22'
+      username: 'sandip'
+      password: 'sandip@1997#'
+      scriptType: 'bash'
       scriptInline: |
-        sudo rm -rf /var/www/html/*
-        sudo cp -r $(System.DefaultWorkingDirectory)/publishedWebsite/* /var/www/html/
+        # Install Apache (if not already installed)
+        sudo apt-get update
+        sudo apt-get install -y apache2
+
+        # Start Apache
+        sudo systemctl start apache2
+
+        # Enable Apache to start on boot
+        sudo systemctl enable apache2
+
+        # Clone the GitHub repository (replace with your repository URL)
+        git clone https://github.com/mukherjeecloudsyzmil/psohtml.git
+
+        # Copy HTML files to the default Apache web directory
+        sudo cp -r your-repository/* /var/www/html/
+
+        # Restart Apache to apply changes
         sudo systemctl restart apache2
-    displayName: 'Deploy to Azure VM'
